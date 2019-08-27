@@ -420,12 +420,4 @@ contract INMGToken is MintableToken {
         assignmentTimestamp[_benefitiary]=block.timestamp;
         transfer(_benefitiary,_amount);
     }
-    
-    function testReduceAssignmentByMonth(address _holder, uint256 monthsNumber) public{
-         assignmentTimestamp[_holder]=assignmentTimestamp[_holder]-(monthsNumber*MONTH);
-    }
-    
-    function selfdestruct() external onlyOwner{
-        selfdestruct(owner);
-    }
 }
