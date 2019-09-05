@@ -7,7 +7,6 @@ const TokenSymbol = 'INMG';
 const TokenDecimals = 18;
 const TokenSupply = 150000000 * 1000000000000000000;
 const paused = false;
-const mintingFinished = false;
 
 const MONTH = 2592000;//seconds in month
 
@@ -54,6 +53,12 @@ function sub(a,b){
 function mul(a,b){
 	return toHex(toNumber(a)*toNumber(b))
 }
+function bigger(a,b){
+	return toNumber(a)>toNumber(b);
+}
+function smaller(a,b){
+	return toNumber(a)<toNumber(b);
+}
 
 contract("INMGToken Erc20 Tests", async(accounts)=>{
 const founder = accounts[0];
@@ -85,12 +90,6 @@ it("Token is not paused after deploy", async()=>{
     let token = await Token.deployed();
 	let result = await token.paused.call();    
     assert.equal(result, false, 'Token is paused after deploy');
-});
-
-it("Minting is not finished after deploy", async()=>{
-    let token = await Token.deployed();
-	let result = await token.mintingFinished.call();    
-    assert.equal(result, false, 'Minting is finished after deploy');
 });
 
 it("Token Founder is "+founder, async()=>{
@@ -149,7 +148,7 @@ it("Users cannot approve again if allowance is not 0", async()=>{
 	let amount = largeAmount;	
 	let token = await Token.deployed();
 	let startAllowance = toNumber(await token.allowance.call(sender,receiver));
-	if(startAllowance>0){
+	if(bigger(startAllowance,0)){
 		assert.isFalse(await TestSuite.testApproval(sender,receiver,amount,true,sender));
 	}else{
 		throw new Error('Allowance was 0 on start')
@@ -159,7 +158,13 @@ it("Users cannot approve again if allowance is not 0", async()=>{
 it("Users can nullify allowance to other addresses", async()=>{
 	let sender = accounts[0];
 	let receiver = accounts[1];
-	assert.isTrue(await TestSuite.testApproval(sender,receiver,0));
+	let token = await Token.deployed();
+	let approval = add(await token.allowance.call(sender,receiver));
+	if(bigger(approval,0)){
+		assert.isTrue(await TestSuite.testApproval(sender,receiver,0));		
+	}else{
+		throw new Error('Allowance was 0 on start')
+	}
 });
 
 it("Users cannot transfer more tokens than they have", async()=>{
@@ -184,9 +189,8 @@ it("Users can allow other addresses to spend tokens more tokens than they have",
 	let sender = accounts[0];
 	let receiver = accounts[1];
 	let token = await Token.deployed();
-	let amount = add(await token.allowance.call(sender,receiver),smallAmount);
+	let amount = add(toHex(await token.balanceOf.call(sender)),smallAmount);
 	assert.isTrue(await TestSuite.testApproval(sender,receiver,amount));
-
 	amount = smallAmount;
 	assert.isTrue(await TestSuite.testIncreaseApproval(sender,receiver,amount));
 });
@@ -216,7 +220,7 @@ it("Only owner can pause token", async()=>{
 			try{
 				await token.pause.sendTransaction({from:_from});
 			}catch(e){
-				TestSuite.handleTxRevert(e)
+				TestSuite.handleTxRevert(e);
 			}
 			isPausedByUser = await token.paused.call();
 		    assert.equal(isPausedByUser, false, 'Minting is paused by not founder');
@@ -250,116 +254,25 @@ it("Noone can transfer,transferFrom or approve after token was paused", async()=
 		for(let i=0;i<array.length;i++){
 			let account = array[i];
 			try{
-				if(account.balance>0){
+				if(bigger(account.balance,0)){
 					let amount = account.balance/2;
 					assert.isFalse(await TestSuite.testTransfer(account.address,receiver, amount,true));					
 				}
-				if(account.allowance==0){
+				if(account.allowance===0){
 					let amount = smallAmount;
 					assert.isFalse(await TestSuite.testApproval(account.address,receiver, amount,true));					
 					assert.isFalse(await TestSuite.testIncreaseApproval(account.address,receiver, amount,true));					
 				}
-				if(account.allowance>0){
+				if(bigger(account.allowance,0)){
 					let amount = account.allowance/2;
 					assert.isFalse(await TestSuite.testDecreaseApproval(account.address,receiver, amount,true));					
 				}
 			}catch(e){
-				TestSuite.handleTxRevert(e)
+				TestSuite.handleTxRevert(e);
 			}
 		}				
 	}else{
 		throw new Error('Token is paused');
-	}
-});
-
-it("Only owner can mint tokens", async()=>{
-	let sender = founder;
-	let receiver = accounts[1];
-	let thirdParty = accounts[2];
-	let array = [receiver,thirdParty];
-	let token = await Token.deployed();
-	let senderStartBalance = toHex(await token.balanceOf.call(sender));
-	let receiverStartBalance = toHex(await token.balanceOf.call(receiver));
-	let thirdPartyStartBalance = toHex(await token.balanceOf.call(thirdParty));
-	let isMintingFinished = await token.mintingFinished.call();
-	if(!isMintingFinished){
-		for(let i=0;i<array.length;i++){
-			let _from = array[i];
-			try{
-				await token.mint.sendTransaction(receiver, toHex(smallAmount),{from:_from});
-			}catch(e){
-				TestSuite.handleTxRevert(e);
-			}
-			let newSenderBalance = toHex(await token.balanceOf.call(sender));
-			let newReceiverBalance = toHex(await token.balanceOf.call(receiver));
-			let newThirdPartyBalance = toHex(await token.balanceOf.call(thirdParty));
-		    assert.equal(newSenderBalance, senderStartBalance, 'sender balance is wrong');
-		    assert.equal(newReceiverBalance, receiverStartBalance, 'receiver balance is wrong');
-	   	    assert.equal(newThirdPartyBalance, thirdPartyStartBalance, 'third party balance is wrong');
-		}	
-		let mint = await token.mint.sendTransaction(receiver, toHex(smallAmount),{from:founder});
-		let newSenderBalance = toHex(await token.balanceOf.call(sender));
-		let newReceiverBalance = toHex(await token.balanceOf.call(receiver));
-	    assert.equal(newSenderBalance, senderStartBalance, 'founder balance is wrong');
-	    assert.equal(newReceiverBalance, add(receiverStartBalance,smallAmount), 'receiver balance is wrong');			
-	}else{
-		throw new Error('Token minting is finished');
-	}
-});
-
-it("Only owner can finish minting", async()=>{
-	let sender = founder;
-	let receiver = accounts[1];
-	let thirdParty = accounts[2];
-	let array = [receiver,thirdParty];
-	let token = await Token.deployed();
-	let mintingFinished = await token.mintingFinished.call();
-	if(!mintingFinished){
-		for(let i=0;i<array.length;i++){
-			let _from = array[i];
-			try{
-				await token.finishMinting.sendTransaction({from:_from});
-			}catch(e){
-				TestSuite.handleTxRevert(e)
-			}
-			mintingFinishedByUser = await token.mintingFinished.call();
-		    assert.equal(mintingFinishedByUser, false, 'Minting is paused by not founder');
-		}
-		await token.finishMinting.sendTransaction({from:founder});
-		mintingFinished = await token.mintingFinished.call();
-	    assert.equal(mintingFinished, true, 'Minting is not paused by founder');
-	}else{
-		throw new Error('Minting is already paused');
-	}
-});
-
-it("Noone can mint after minting was finished", async()=>{
-	let sender = founder;
-	let receiver = accounts[1];
-	let thirdParty = accounts[2];
-	let array = [founder,receiver,thirdParty];
-	let token = await Token.deployed();
-	let senderStartBalance = toNumber(await token.balanceOf.call(sender));
-	let receiverStartBalance = toNumber(await token.balanceOf.call(receiver));
-	let thirdPartyStartBalance = toNumber(await token.balanceOf.call(thirdParty));
-	let isPaused = await token.paused.call();
-	if(isPaused){
-		for(let i=0;i<array.length;i++){
-			let _from = array[i];
-			try{
-				let mint = await token.mint.sendTransaction(receiver, toHex(smallAmount),{from:_from});
-			}catch(e){
-				TestSuite.handleTxRevert(e)
-			}
-			let newSenderBalance = toNumber(await token.balanceOf.call(sender));
-			let newReceiverBalance = toNumber(await token.balanceOf.call(receiver));
-			let newThirdPartyBalance = toNumber(await token.balanceOf.call(thirdParty));
-		    assert.equal(newSenderBalance, senderStartBalance, 'sender balance is wrong');
-		    assert.equal(newReceiverBalance, receiverStartBalance, 'receiver balance is wrong');
-	   	    assert.equal(newThirdPartyBalance, thirdPartyStartBalance, 'third party balance is wrong');
-		}				
-	}else{
-		throw new Error('Token minting is paused');
 	}
 });
 
@@ -394,10 +307,10 @@ it("Users can burn their tokens", async()=>{
 	let token = await Token.deployed();
 	let startTotalSupply = toHex(await token.totalSupply.call());    
 	let senderStartBalance = toHex(await token.balanceOf.call(sender));
-	if(senderStartBalance<smallAmount){
+	if(bigger(senderStartBalance,smallAmount)){
 		await token.burnTokens.sendTransaction(toHex(smallAmount),{from:sender});
 		let newSenderBalance = toHex(await token.balanceOf.call(sender));
-	    assert.equal(senderStartBalance-smallAmount,newSenderBalance, 'sender balance is wrong');
+	    assert.equal(sub(senderStartBalance,smallAmount),newSenderBalance, 'sender balance is wrong');
 		let newTotalSupply = toHex(await token.totalSupply.call());    
 	    assert.equal(sub(startTotalSupply,smallAmount),newTotalSupply, 'Token Supply is not '+toNumber(startTotalSupply-smallAmount));		
 	}else{
@@ -408,17 +321,17 @@ it("Users can burn their tokens", async()=>{
 it("Users cannot burn more than their balance", async()=>{
 	let sender = accounts[1];
 	let token = await Token.deployed();
-	let startTotalSupply = toNumber(await token.totalSupply.call());    
-	let senderStartBalance = toNumber(await token.balanceOf.call(sender));
-	if(senderStartBalance>smallAmount){
+	let startTotalSupply = toHex(await token.totalSupply.call());    
+	let senderStartBalance = toHex(await token.balanceOf.call(sender));
+	if(bigger(senderStartBalance,smallAmount)){
 		try{
-			await token.burnTokens.sendTransaction(toHex(senderStartBalance+smallAmount),{from:sender});
+			await token.burnTokens.sendTransaction(add(senderStartBalance,smallAmount),{from:sender});
 		}catch(e){
-			TestSuite.handleTxRevert(e)
+			TestSuite.handleTxRevert(e);
 		}
-		let newSenderBalance = toNumber(await token.balanceOf.call(sender));
+		let newSenderBalance = toHex(await token.balanceOf.call(sender));
 	    assert.equal(senderStartBalance,newSenderBalance, 'sender balance is wrong');
-		let newTotalSupply = toNumber(await token.totalSupply.call());   
+		let newTotalSupply = toHex(await token.totalSupply.call());   
 	    assert.equal(startTotalSupply,newTotalSupply, 'Token Supply is not '+toNumber(startTotalSupply));
 	}else{
 		throw new Error('Sender balance is lower than'+smallAmount);
@@ -447,7 +360,7 @@ class TestSuite{
 				try{
 					await token.transfer.sendTransaction(receiver, amount,{from:txSender});
 				}catch(e){
-					TestSuite.handleTxRevert(e)
+					if(expectFailure){TestSuite.handleTxRevert(e)}else{throw new Error(e);}
 				}
 				let newSenderBalance = toHex(await token.balanceOf.call(sender));
 				let newReceiverBalance = toHex(await token.balanceOf.call(receiver));
@@ -483,7 +396,7 @@ class TestSuite{
 				try{
 					await token.transferFrom(owner,receiver, amount,{from:txSender});
 				}catch(e){
-					TestSuite.handleTxRevert(e)
+					if(expectFailure){TestSuite.handleTxRevert(e)}else{throw new Error(e);}
 				}
 				let newOwnerBalance = toHex(await token.balanceOf.call(owner));
 				let newSenderBalance = toHex(await token.balanceOf.call(sender));
@@ -527,7 +440,7 @@ class TestSuite{
 					try{
 						await token.approve.sendTransaction(receiver, toHex(amount),{from:txSender});					
 					}catch(e){
-						TestSuite.handleTxRevert(e);
+						if(expectFailure){TestSuite.handleTxRevert(e)}else{throw new Error(e);};
 					}
 					let newAllowance = toHex(await token.allowance.call(sender,receiver));
 					if(expectFailure){
@@ -553,13 +466,13 @@ class TestSuite{
 					try{
 						await token.increaseApproval.sendTransaction(receiver,toHex(amount),{from:txSender})
 					}catch(e){
-						TestSuite.handleTxRevert(e);
+						if(expectFailure){TestSuite.handleTxRevert(e)}else{throw new Error(e);};
 					}
 					let newAllowance = toHex(await token.allowance.call(sender,receiver));
 					if(expectFailure){
-					    assert.equal(newAllowance, startAllowance, 'Allowance is wrong after increase');
+					    assert.equal(startAllowance,newAllowance, 'Allowance has increased');
 					}else{
-					    assert.equal(newAllowance, add(startAllowance,amount), 'Allowance is wrong after increase');
+					    assert.equal(add(startAllowance,amount),newAllowance, 'Allowance has not increased');
 					}
 					return resolve(result);
 				}catch(e){
@@ -579,7 +492,7 @@ class TestSuite{
 					try{
 						await token.decreaseApproval.sendTransaction(receiver,toHex(amount),{from:txSender})
 					}catch(e){
-						TestSuite.handleTxRevert(e);
+						if(expectFailure){TestSuite.handleTxRevert(e)}else{throw new Error(e);};
 					}
 					let newAllowance = toHex(await token.allowance.call(sender,receiver));
 					if(expectFailure){
@@ -605,7 +518,7 @@ class TestSuite{
 				try{
 					await token.burnTokens.sendTransaction(toHex(amount),{from:txSender})
 				}catch(e){
-					TestSuite.handleTxRevert(e);
+					if(expectFailure){TestSuite.handleTxRevert(e)}else{throw new Error(e);};
 				}
 				let newBalance = toHex(await token.balanceOf.call(sender));
 				if(expectFailure){
@@ -634,7 +547,7 @@ class TestSuite{
 				try{
 					await token.reduceAssignmentTimestampByMonth.sendTransaction(receiver, amount,{from:txSender});
 				}catch(e){
-					TestSuite.handleTxRevert(e)
+					if(expectFailure){TestSuite.handleTxRevert(e)}else{throw new Error(e);}
 				}
 				let calculateMonthPassed = function(since){
 					let date = new Date(); 
@@ -685,7 +598,7 @@ class TestSuite{
 				try{
 					await token.assignTokens.sendTransaction(receiver, amount,{from:txSender});
 				}catch(e){
-					TestSuite.handleTxRevert(e)
+					if(expectFailure){TestSuite.handleTxRevert(e)}else{throw new Error(e);}
 				}
 				let newSenderBalance = toHex(await token.balanceOf.call(sender));
 				let newReceiverBalance = toHex(await token.balanceOf.call(receiver));
@@ -729,7 +642,7 @@ contract("INMGToken Lockup Tests", async(accounts)=>{
 		let balance = toHex(await token.balanceOf.call(sender));
 		let lockedBalance = toHex(await token.getLockedAssignedBalance.call(sender));	
 		let amount = add(balance,lockedBalance);
-		if(lockedBalance>0){
+		if(bigger(lockedBalance,0)){
 			assert.isFalse(await TestSuite.testTransfer(sender,receiver,amount,true,sender));
 			assert.isTrue(await TestSuite.testApproval(sender,receiver,amount,false,sender));
 			assert.isFalse(await TestSuite.testTransferFrom(sender,receiver,receiver,amount,true,receiver));
