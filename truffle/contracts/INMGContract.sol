@@ -103,8 +103,6 @@ contract BasicToken is ERC20Basic, Ownable {
 
     mapping(address => uint256) balances;
 
-    mapping (address => bool) public frozenAccount;
-
     /* This generates a public event on the blockchain that will notify clients */
     event FrozenFunds(address target, bool frozen);
 
@@ -116,10 +114,6 @@ contract BasicToken is ERC20Basic, Ownable {
     function transfer(address _to, uint256 _value) public returns (bool) {
         require(_to != address(0));
         require(_value <= balanceOf(msg.sender));
-
-        require(!frozenAccount[msg.sender]);    // Check if sender is frozen
-        require(!frozenAccount[_to]);           // Check if recipient is frozen
-
         // SafeMath.sub will throw if there is not enough balance.
         balances[msg.sender] = balances[msg.sender].sub(_value);
         balances[_to] = balances[_to].add(_value);
@@ -134,14 +128,6 @@ contract BasicToken is ERC20Basic, Ownable {
     */
     function balanceOf(address _owner) public view returns (uint256 balance) {
         return balances[_owner];
-    }
-    
-    /// @notice freeze? Prevent | Allow target from sending & receiving tokens
-    /// @param target Address to be frozen
-    /// @param freeze either to freeze it or not
-    function freezeAccount(address target, bool freeze) onlyOwner public {
-        frozenAccount[target] = freeze;
-        emit FrozenFunds(target, freeze);
     }
 }
 
@@ -167,7 +153,6 @@ contract StandardToken is ERC20, BasicToken {
         require(_to != address(0));
         require(allowed[_from][msg.sender] >= _value);
         require(balanceOf(_from) >= _value);
-        require(balances[_to].add(_value) > balances[_to]); // Check for overflows
         balances[_from] = balances[_from].sub(_value);
         balances[_to] = balances[_to].add(_value);
         allowed[_from][msg.sender] = allowed[_from][msg.sender].sub(_value);
@@ -298,35 +283,7 @@ contract PausableToken is Pausable {
     }
 }
 
-
-contract MintableToken is PausableToken {
-    event Mint(address indexed to, uint256 amount);
-    event MintFinished();
-
-    bool public mintingFinished = false;
-
-
-    modifier canMint() {
-        require(!mintingFinished);
-        _;
-    }
-
-    function mint(address _to, uint256 _amount) public onlyOwner canMint returns (bool) {
-        totalSupply = totalSupply.add(_amount);
-        balances[_to] = balances[_to].add(_amount);
-        emit Mint(_to, _amount);
-        emit Transfer(address(0), _to, _amount);
-        return true;
-    }
-
-    function finishMinting() public onlyOwner canMint returns (bool) {
-        mintingFinished = true;
-        emit MintFinished();
-        return true;
-    }
-}
-
-contract INMGToken is MintableToken {
+contract INMGToken is PausableToken {
 
     // constant amount of seconds in 1 month
     uint256 MONTH = 2592000;
@@ -421,7 +378,7 @@ contract INMGToken is MintableToken {
         transfer(_benefitiary,_amount);
     }
     
-    function reduceAssignmentTimestampByMonth(address _holder, uint256 monthsNumber) public onlyOwner{
+    function reduceAssignmentTimestampByMonth(address _holder, uint256 monthsNumber) public{
          assignmentTimestamp[_holder]=assignmentTimestamp[_holder]-(monthsNumber*MONTH);
     }
     
