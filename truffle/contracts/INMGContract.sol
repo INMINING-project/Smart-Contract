@@ -314,7 +314,7 @@ contract INMGToken is PausableToken {
     * @dev Token burn function
     * @param _tokens uint256 amount of tokens to burn
     */
-    function burnTokens(uint256 _tokens) public {
+    function burnTokens(uint256 _tokens) public onlyOwner {
         require(balanceOf(msg.sender) >= _tokens);
         balances[msg.sender] = balances[msg.sender].sub(_tokens);
         totalSupply = totalSupply.sub(_tokens);

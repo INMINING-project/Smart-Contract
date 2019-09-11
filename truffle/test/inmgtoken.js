@@ -302,40 +302,36 @@ it("Only owner can unpause token", async()=>{
 	}
 });
 
-it("Users can burn their tokens", async()=>{
-	let sender = accounts[1];
+it("Only owner can burn tokens", async()=>{
+	let owner = founder;
+	let users = [accounts[1],accounts[2]]
 	let token = await Token.deployed();
-	let startTotalSupply = toHex(await token.totalSupply.call());    
-	let senderStartBalance = toHex(await token.balanceOf.call(sender));
-	if(bigger(senderStartBalance,smallAmount)){
-		await token.burnTokens.sendTransaction(toHex(smallAmount),{from:sender});
-		let newSenderBalance = toHex(await token.balanceOf.call(sender));
-	    assert.equal(sub(senderStartBalance,smallAmount),newSenderBalance, 'sender balance is wrong');
-		let newTotalSupply = toHex(await token.totalSupply.call());    
-	    assert.equal(sub(startTotalSupply,smallAmount),newTotalSupply, 'Token Supply is not '+toNumber(startTotalSupply-smallAmount));		
+	let amount = smallAmount;
+	let startTotalSupply = toHex(await token.totalSupply.call());
+	for(let i=0;i<users.length;i++){
+		let sender = users[i];
+		let senderStartBalance = toHex(await token.balanceOf.call(sender));    
+		if(bigger(senderStartBalance,amount)){
+			assert.isFalse(await TestSuite.testBurn(sender,amount,true,sender));
+		}else{
+			throw new Error('Sender balance is lower than '+amount);
+		}
+	}
+
+	let ownerStartBalance = toHex(await token.balanceOf.call(owner));  
+	if(bigger(ownerStartBalance,amount)){
+		assert.isTrue(await TestSuite.testBurn(owner,amount));		
 	}else{
-		throw new Error('Sender balance is lower than '+smallAmount);
+		throw new Error('Owner balance is lower than '+amount);
 	}
 });
 
 it("Users cannot burn more than their balance", async()=>{
 	let sender = accounts[1];
 	let token = await Token.deployed();
-	let startTotalSupply = toHex(await token.totalSupply.call());    
-	let senderStartBalance = toHex(await token.balanceOf.call(sender));
-	if(bigger(senderStartBalance,smallAmount)){
-		try{
-			await token.burnTokens.sendTransaction(add(senderStartBalance,smallAmount),{from:sender});
-		}catch(e){
-			TestSuite.handleTxRevert(e);
-		}
-		let newSenderBalance = toHex(await token.balanceOf.call(sender));
-	    assert.equal(senderStartBalance,newSenderBalance, 'sender balance is wrong');
-		let newTotalSupply = toHex(await token.totalSupply.call());   
-	    assert.equal(startTotalSupply,newTotalSupply, 'Token Supply is not '+toNumber(startTotalSupply));
-	}else{
-		throw new Error('Sender balance is lower than'+smallAmount);
-	}
+	let senderStartBalance = toHex(await token.balanceOf.call(sender));    
+	let amount = add(senderStartBalance,smallAmount);
+	assert.isFalse(await TestSuite.testBurn(sender,amount,true,sender));
 });
 
 });
@@ -522,9 +518,9 @@ class TestSuite{
 				}
 				let newBalance = toHex(await token.balanceOf.call(sender));
 				if(expectFailure){
-				    assert.equal(startBalance, newBalance, 'Balance is wrong after burn');
+				    assert.equal(newBalance, startBalance, 'Balance has updated after burn');
 				}else{
-				    assert.equal(startBalance, sub(newBalance,amount), 'Balance is wrong after burn');
+				    assert.equal(newBalance, sub(startBalance,amount), 'Balance has not updated after burn');
 				}
 				return resolve(result);
 			}catch(e){
