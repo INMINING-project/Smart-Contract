@@ -304,7 +304,7 @@ contract INMGToken is PausableToken {
         decimals = 18;
         totalSupply = 150000000 * 1000000000000000000;
         
-        founder = msg.sender;
+        founder = 0x607804DF9171a14F08171D5Ff6AE383810aef404;
         balances[founder] = totalSupply;
         emit Transfer(address(0x0), founder, totalSupply);
         //pause();
@@ -377,7 +377,7 @@ contract INMGToken is PausableToken {
         assignmentTimestamp[_benefitiary]=block.timestamp;
         transfer(_benefitiary,_amount);
     }
-    
+
     function selfdestruct() external onlyOwner{
         selfdestruct(owner);
     }
